@@ -1,56 +1,55 @@
 :root {
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --sidebar: #1e293b;
-    --bg: #f8fafc;
-    --text-main: #0f172a;
-    --text-muted: #64748b;
-    --glass: rgba(255, 255, 255, 0.9);
+    --primary: #6366f1;
+    --accent: #8b5cf6;
+    --glass-bg: rgba(255, 255, 255, 0.4);
+    --glass-border: rgba(255, 255, 255, 0.5);
 }
 
-* { box-sizing: border-box; font-family: 'Inter', sans-serif; }
-body, html { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
-
-.app-container { display: flex; height: 100vh; }
-
-/* Sidebar */
-.sidebar {
-    width: 280px; background: var(--sidebar); color: white;
-    display: flex; flex-direction: column; padding: 24px;
+body {
+    margin: 0; font-family: 'Plus Jakarta Sans', sans-serif;
+    height: 100vh; overflow: hidden; background: #eef2ff;
 }
-.brand { display: flex; align-items: center; gap: 12px; font-size: 20px; margin-bottom: 40px; }
-.logo-icon { background: var(--primary); padding: 8px 14px; border-radius: 8px; font-weight: bold; }
 
-.tool-group { margin-bottom: 30px; }
-.tool-group label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 12px; }
-
-.tool-btn {
-    width: 100%; padding: 12px; border-radius: 8px; border: none; 
-    background: transparent; color: #cbd5e1; text-align: left;
-    cursor: pointer; display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+.mesh-gradient {
+    position: fixed; inset: 0; z-index: -1;
+    background: radial-gradient(at 0% 0%, #c7d2fe 0, transparent 50%),
+                radial-gradient(at 100% 0%, #fbcfe8 0, transparent 50%),
+                radial-gradient(at 100% 100%, #ddd6fe 0, transparent 50%),
+                radial-gradient(at 0% 100%, #e0e7ff 0, transparent 50%);
 }
-.tool-btn:hover { background: rgba(255,255,255,0.05); }
-.tool-btn.primary { background: var(--primary); color: white; font-weight: 600; margin-top: 20px; }
-.tool-btn.primary:disabled { background: #475569; cursor: not-allowed; }
 
-/* Workspace */
-.workspace { flex: 1; position: relative; overflow: auto; display: flex; flex-direction: column; }
-.full-center { display: flex; align-items: center; justify-content: center; height: 100%; }
-
-.drop-card {
-    width: 500px; padding: 60px; background: white; border-radius: 24px;
-    border: 2px dashed #e2e8f0; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);
-    transition: all 0.3s ease;
+.glass-shell {
+    display: flex; height: 94vh; margin: 3vh;
+    background: var(--glass-bg); backdrop-filter: blur(20px);
+    border-radius: 30px; border: 1px solid var(--glass-border);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
 }
-.drop-card.dragover { border-color: var(--primary); background: #f5f3ff; transform: scale(1.02); }
-.icon-circle { font-size: 48px; margin-bottom: 20px; }
 
-/* Canvas Area */
-.canvas-viewport { padding: 40px; display: flex; justify-content: center; }
-#konva-holder { background: white; box-shadow: 0 0 50px rgba(0,0,0,0.1); border-radius: 4px; }
+.sidebar-glass {
+    width: 280px; border-right: 1px solid var(--glass-border);
+    padding: 30px; display: flex; flex-direction: column;
+}
 
-/* Modal */
-.modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal-content { background: white; padding: 40px; border-radius: 20px; text-align: center; }
-.spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.liquid-card {
+    background: rgba(255, 255, 255, 0.6); padding: 60px;
+    border-radius: 24px; border: 1px solid white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05); text-align: center;
+    cursor: pointer; transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.liquid-card:hover { transform: translateY(-5px); background: white; }
+
+.liquid-btn {
+    width: 100%; padding: 14px; border-radius: 16px; border: none;
+    background: rgba(255,255,255,0.5); color: #4338ca; font-weight: 600;
+    margin-bottom: 12px; cursor: pointer; transition: 0.3s;
+}
+
+.liquid-btn.primary { background: var(--primary); color: white; box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.4); }
+
+.canvas-container {
+    padding: 40px; height: 100%; overflow: auto;
+    display: flex; justify-content: center;
+}
+
+#konva-holder { border-radius: 8px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
