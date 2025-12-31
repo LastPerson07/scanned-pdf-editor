@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ScanEdit Pro | AI PDF Editor</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
+  </head>
+  <body>
+    <div class="app-container">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo-icon">S</div>
+          <span>ScanEdit <strong>Pro</strong></span>
+        </div>
+        <nav class="tools">
+          <div class="tool-group">
+            <label>Document</label>
+            <button class="tool-btn active" onclick="location.reload()">
+              <i>📄</i> New Upload
+            </button>
+            <button id="downloadBtn" class="tool-btn primary" disabled>
+              <i>💾</i> Export PDF
+            </button>
+          </div>
+          <div class="tool-group info-box">
+            <label>Instructions</label>
+            <p>
+              1. Upload a scanned file.<br />2. Click any word.<br />3. Type new
+              text.<br />4. Download.
+            </p>
+          </div>
+        </nav>
+        <div class="footer-status">
+          <span id="status-dot" class="dot"></span>
+          <span id="status-text">System Ready</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div id="upload-section" class="full-center">
+          <div id="drop-zone" class="drop-card">
+            <div class="icon-circle">📤</div>
+            <h2>Start Editing</h2>
+            <p>Drag & drop your PDF/Image or <span>browse files</span></p>
+            <input
+              type="file"
+              id="fileInput"
+              hidden
+              accept="application/pdf,image/*"
+            />
+          </div>
+        </div>
+
+        <div id="editor-section" style="display: none">
+          <div class="canvas-viewport">
+            <div id="konva-holder"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <div id="loader" class="modal" style="display: none">
+      <div class="modal-content">
+        <div class="spinner"></div>
+        <h3>OCR Processing...</h3>
+        <p>We are analyzing the text structure of your document.</p>
+      </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+  </body>
+</html>
