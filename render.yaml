@@ -4,19 +4,9 @@ services:
     env: docker
     plan: free
     region: oregon
-    # This automatically connects the Render Port to your app
     envVars:
       - key: PORT
         value: 10000
       - key: PYTHONUNBUFFERED
         value: "1"
-    # Free tier uses ephemeral storage; files are wiped on restart.
-    # This is actually better for privacy on a free tool.
-    # If you upgrade to a paid plan, you can add a persistent disk here.
-    disk:
-      name: uploads-data
-      mountPath: /app/uploads
-      sizeGB: 1
-
-# Optional: Health check to ensure the service is running
-healthCheckPath: /
+    # Removed the disk section because it's not allowed on 'free' plan
