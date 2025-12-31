@@ -2,60 +2,45 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScanEdit Pro | Liquid UI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>ScanEdit Pro | AI Document Studio</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
 </head>
 <body>
-    <div class="mesh-gradient"></div>
+    <div class="mesh-bg"></div>
     
-    <div class="glass-shell">
-        <aside class="sidebar-glass">
-            <div class="brand">
-                <div class="logo-blob"></div>
-                <span>Scan<strong>Edit</strong></span>
+    <div class="glass-container">
+        <aside class="sidebar">
+            <div class="logo">Scan<span>Edit</span></div>
+            <div class="nav-links">
+                <button class="nav-item active" onclick="location.reload()">Upload New</button>
+                <button id="downloadBtn" class="nav-item primary" disabled>Export PDF</button>
             </div>
-            
-            <div class="tool-section">
-                <button class="liquid-btn active" onclick="location.reload()">
-                    <span class="btn-content"><i>⊕</i> New Scan</span>
-                </button>
-                <button id="downloadBtn" class="liquid-btn primary" disabled>
-                    <span class="btn-content"><i>↓</i> Export PDF</span>
-                </button>
-            </div>
-
-            <div class="status-card">
-                <div class="pulse"></div>
-                <p id="status-text">Ready for Upload</p>
+            <div class="info-card">
+                <p>Click any highlighted word to rewrite it seamlessly.</p>
             </div>
         </aside>
 
-        <main class="main-viewport">
-            <div id="upload-section" class="center-content">
-                <div id="drop-zone" class="liquid-card">
-                    <div class="upload-icon">✦</div>
-                    <h1>Seamless PDF Editing</h1>
-                    <p>Drop your scanned document to begin the magic.</p>
-                    <input type="file" id="fileInput" hidden accept="application/pdf,image/*">
+        <main class="viewport">
+            <div id="upload-view" class="full-center">
+                <div id="drop-zone" class="glass-card">
+                    <div class="icon">📄</div>
+                    <h2>Scanned PDF Editor</h2>
+                    <p>Drag files here or <span>Browse</span></p>
+                    <input type="file" id="fileInput" hidden>
                 </div>
             </div>
 
-            <div id="editor-section" style="display:none;">
-                <div class="canvas-container">
-                    <div id="konva-holder"></div>
-                </div>
+            <div id="editor-view" style="display:none;">
+                <div id="konva-holder"></div>
             </div>
         </main>
     </div>
 
-    <div id="loader" class="glass-modal" style="display:none;">
-        <div class="loader-content">
-            <div class="liquid-spinner"></div>
-            <h3>AI Analyzing Text...</h3>
-        </div>
+    <div id="loader" class="glass-overlay" style="display:none;">
+        <div class="liquid-loader"></div>
+        <p>Analyzing Document Structure...</p>
     </div>
 
     <script src="/static/script.js"></script>
