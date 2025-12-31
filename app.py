@@ -2,116 +2,93 @@ import os, uuid, json, shutil, cv2, fitz
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 
 app = FastAPI()
 
-# Directories
+# Setup paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Static Files Connection
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/data", StaticFiles(directory=UPLOAD_DIR), name="data")
 
-# --- OCR ENGINE ---
+# --- CORE API: OCR READING ---
 def get_ocr_data(img_path):
-    try:
-        img = Image.open(img_path)
-        # psm 11 detects sparse text blocks; essential for scanned forms
-        data = pytesseract.image_to_data(img, config='--psm 11', output_type=pytesseract.Output.DICT)
-        words = []
-        for i in range(len(data['text'])):
-            if int(data['conf'][i]) > 30 and data['text'][i].strip():
-                words.append({
-                    "text": data['text'][i],
-                    "x": data['left'][i], "y": data['top'][i],
-                    "w": data['width'][i], "h": data['height'][i]
-                })
-        return words
-    except Exception as e:
-        print(f"OCR Error: {e}")
-        return []
-
-# --- ROUTES ---
-@app.get("/")
-async def serve_index():
-    return FileResponse(os.path.join(BASE_DIR, "static/index.html"))
+    img = Image.open(img_path)
+    # Using psm 11 to find sparse text in scanned documents
+    data = pytesseract.image_to_data(img, config='--psm 11', output_type=pytesseract.Output.DICT)
+    words = []
+    for i in range(len(data['text'])):
+        if int(data['conf'][i]) > 40 and data['text'][i].strip():
+            words.append({
+                "text": data['text'][i],
+                "x": data['left'][i], "y": data['top'][i],
+                "w": data['width'][i], "h": data['height'][i]
+            })
+    return words
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    session_id = str(uuid.uuid4())
-    session_path = os.path.join(UPLOAD_DIR, session_id)
-    os.makedirs(session_path, exist_ok=True)
+async def upload(file: UploadFile = File(...)):
+    sid = str(uuid.uuid4())
+    path = os.path.join(UPLOAD_DIR, sid)
+    os.makedirs(path, exist_ok=True)
     
-    # Save original
     file_ext = file.filename.split('.')[-1].lower()
-    input_path = os.path.join(session_path, f"input.{file_ext}")
-    with open(input_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    save_path = os.path.join(path, f"orig.{file_ext}")
     
-    # PDF to Image Conversion
+    with open(save_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    
+    # If PDF, convert first page to high-res image
     if file_ext == 'pdf':
-        doc = fitz.open(input_path)
-        page = doc.load_page(0) # Logic for Page 1
+        doc = fitz.open(save_path)
+        page = doc.load_page(0)
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-        img_filename = "page_0.png"
-        img_path = os.path.join(session_path, img_filename)
+        img_path = os.path.join(path, "work.png")
         pix.save(img_path)
     else:
-        img_filename = f"page_0.{file_ext}"
-        img_path = os.path.join(session_path, img_filename)
-        shutil.copy(input_path, img_path)
+        img_path = save_path
 
-    words = get_ocr_data(img_path)
-    return {
-        "session_id": session_id, 
-        "image_url": f"/data/{session_id}/{img_filename}", 
-        "words": words
-    }
+    return {"session_id": sid, "image_url": f"/data/{sid}/{os.path.basename(img_path)}", "words": get_ocr_data(img_path)}
 
+# --- CORE API: SEAMLESS EDITING ---
 @app.post("/edit")
-async def process_edits(session_id: str = Form(...), edits: str = Form(...)):
-    edit_data = json.loads(edits)
-    session_path = os.path.join(UPLOAD_DIR, session_id)
-    img_path = os.path.join(session_path, "page_0.png")
+async def edit(session_id: str = Form(...), edits: str = Form(...)):
+    edit_list = json.loads(edits)
+    path = os.path.join(UPLOAD_DIR, session_id)
+    img_path = os.path.join(path, "work.png")
     
-    # 1. Image Inpainting (Erase Text)
+    # 1. Image Healing (Inpainting)
     img = cv2.imread(img_path)
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    for e in edit_data:
-        # Create a slightly larger mask to ensure clean erasure
-        cv2.rectangle(mask, (e['x']-2, e['y']-2), (e['x']+e['w']+2, e['y']+e['h']+2), 255, -1)
+    for e in edit_list:
+        # Create a mask for the old text
+        cv2.rectangle(mask, (e['x'], e['y']), (e['x']+e['w'], e['y']+e['h']), 255, -1)
     
-    # Telea algorithm fills the gap based on surrounding pixels
-    inpainted = cv2.inpaint(img, mask, 3, cv2.INPAINT_TELEA)
+    # Fill the mask using surrounding paper texture
+    healed = cv2.inpaint(img, mask, 3, cv2.INPAINT_TELEA)
     
-    # 2. PIL Drawing (New Text)
-    inpainted_rgb = cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(inpainted_rgb)
+    # 2. Text Overlay
+    healed_rgb = cv2.cvtColor(healed, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(healed_rgb)
     draw = ImageDraw.Draw(pil_img)
     
-    # System font fallback for Render/Linux
-    try: font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    except: font_path = None
-
-    for e in edit_data:
-        f_size = max(12, int(e['h'] * 0.85))
-        try: font = ImageFont.truetype(font_path, f_size) if font_path else ImageFont.load_default()
+    for e in edit_list:
+        font_size = max(12, int(e['h'] * 0.9))
+        try: font = ImageFont.truetype("DejaVuSans.ttf", font_size)
         except: font = ImageFont.load_default()
         draw.text((e['x'], e['y']), e['new_text'], fill=(0,0,0), font=font)
     
-    # 3. Export to PDF
-    out_img_path = os.path.join(session_path, "edited.png")
-    pil_img.save(out_img_path)
+    out_path = os.path.join(path, "final.pdf")
+    pil_img.save(os.path.join(path, "edited.png"))
     
-    pdf_path = os.path.join(session_path, "final_export.pdf")
-    img_doc = fitz.open(out_img_path)
+    # Convert back to PDF
+    img_doc = fitz.open(os.path.join(path, "edited.png"))
     pdf_bytes = img_doc.convert_to_pdf()
-    final_pdf = fitz.open("pdf", pdf_bytes)
-    final_pdf.save(pdf_path)
+    with open(out_path, "wb") as f: f.write(pdf_bytes)
     
-    return {"download_url": f"/data/{session_id}/final_export.pdf"}
+    return {"download_url": f"/data/{session_id}/final.pdf"}
