@@ -4,8 +4,13 @@ gsap.to("#blob2", { x: -120, y: -80, duration: 15, repeat: -1, yoyo: true, ease:
 
 document.addEventListener('DOMContentLoaded', () => M.AutoInit());
 
+// Fix drag and drop globally
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('fileInput');
+const browseBtn = document.getElementById('browseBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const modal = document.getElementById('editModal');
 const newTextInput = document.getElementById('newText');
@@ -16,11 +21,13 @@ const saveEditBtn = document.getElementById('saveEditBtn');
 
 let stage, layer, sessionId, edits = [];
 let currentWord = null;
+let currentGroup = null;
 
 ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
     dropZone.addEventListener(event, e => { e.preventDefault(); e.stopPropagation(); });
 });
 
+dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
 dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', e => {
@@ -29,6 +36,7 @@ dropZone.addEventListener('drop', e => {
 });
 
 dropZone.onclick = () => fileInput.click();
+browseBtn.onclick = () => fileInput.click();
 fileInput.onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); };
 
 async function handleFile(file) {
@@ -85,6 +93,7 @@ function initEditor(imageUrl, words) {
             });
 
             group.on('click', () => {
+                currentGroup = group;
                 currentWord = word;
                 newTextInput.value = word.text || '';
                 fontSizeSlider.value = Math.round(word.h * 0.8);
@@ -105,17 +114,42 @@ fontSizeSlider.addEventListener('input', () => {
 });
 
 saveEditBtn.onclick = () => {
-    if (!currentWord) return;
+    if (!currentWord || !currentGroup) return;
+
+    const newText = newTextInput.value || currentWord.text;
+    const fontSize = parseInt(fontSizeSlider.value);
+    const color = textColor.value;
 
     const edited = {
         ...currentWord,
-        new_text: newTextInput.value || currentWord.text,
-        font_size: parseInt(fontSizeSlider.value),
-        color: textColor.value
+        new_text: newText,
+        font_size: fontSize,
+        color: color
     };
 
     edits = edits.filter(e => !(e.x === currentWord.x && e.y === currentWord.y));
     edits.push(edited);
+
+    // Update canvas preview
+    const rect = currentGroup.getChildren()[0];
+    rect.fill('white');
+
+    // Remove old text if exists
+    if (currentGroup.getChildren().length > 1) {
+        currentGroup.getChildren()[1].destroy();
+    }
+
+    const konvaText = new Konva.Text({
+        text: newText,
+        fontSize: fontSize,
+        fill: color,
+        width: currentWord.w,
+        height: currentWord.h,
+        align: 'center',
+        verticalAlign: 'middle'
+    });
+    currentGroup.add(konvaText);
+    layer.draw();
 
     downloadBtn.classList.add('active');
     M.Modal.getInstance(modal).close();
