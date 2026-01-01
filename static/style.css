@@ -15,6 +15,16 @@ body::before {
     color: white;
 }
 
+.modal .modal-content input[type="text"] {
+    border-bottom: 1px solid rgba(255,255,255,0.5);
+    color: white;
+}
+
+.modal .modal-content label {
+    color: rgba(255,255,255,0.7);
+}
+
 .modal .modal-footer {
     background: transparent;
+    border-top: none;
 }
