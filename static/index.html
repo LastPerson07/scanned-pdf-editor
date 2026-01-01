@@ -3,93 +3,669 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScanEdit Pro | AI Document Editor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <title>ScanEdit Pro | Liquid Glass</title>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
     <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <style>
+        /* --- Liquid Glass CSS Engine --- */
+        :root {
+            --glass-bg: rgba(20, 25, 40, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.15);
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+        }
+
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            margin: 0;
+        }
+
+        /* Animated Background Blobs */
+        .blob-cont {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: -1;
+            overflow: hidden;
+            background: #0f172a;
+        }
+        
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.6;
+            animation: float 20s infinite ease-in-out;
+        }
+        .blob-1 { width: 600px; height: 600px; background: #4f46e5; top: -10%; left: -10%; animation-delay: 0s; }
+        .blob-2 { width: 500px; height: 500px; background: #ec4899; bottom: -10%; right: -10%; animation-delay: -5s; }
+        .blob-3 { width: 300px; height: 300px; background: #06b6d4; bottom: 20%; left: 20%; animation-delay: -10s; }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+
+        /* Glass Components */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .glass-sidebar {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--glass-border);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--glass-highlight);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .glass-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
+        /* Loader */
+        .loader-line {
+            height: 2px;
+            width: 100%;
+            background: rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+            display: none;
+        }
+        .loader-line::after {
+            content: '';
+            position: absolute;
+            left: -50%;
+            height: 100%;
+            width: 40%;
+            background: var(--accent);
+            animation: load 1s infinite linear;
+        }
+        @keyframes load { 0% { left: -50%; } 100% { left: 150%; } }
+        
+        /* DOM Overlay for Editing */
+        #edit-textarea {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.9);
+            color: white;
+            border: 1px solid var(--accent);
+            outline: none;
+            resize: none;
+            overflow: hidden;
+            padding: 0;
+            margin: 0;
+            z-index: 100;
+            display: none;
+            border-radius: 4px;
+        }
+    </style>
 </head>
-<body>
-    <div class="gradient-bg"></div>
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
+<body class="h-screen w-screen overflow-hidden text-sm">
 
-    <div id="loader" class="loader-overlay">
-        <div class="preloader-wrapper big active">
-            <div class="spinner-layer spinner-blue-only">
-                <div class="circle-clipper left"><div class="circle"></div></div>
-                <div class="gap-patch"><div class="circle"></div></div>
-                <div class="circle-clipper right"><div class="circle"></div></div>
-            </div>
-        </div>
-        <h5>Analyzing Document...</h5>
+    <!-- Background -->
+    <div class="blob-cont">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
     </div>
 
-    <div class="app-layout">
-        <nav class="sidebar z-depth-2">
-            <div class="brand">S<span>E</span></div>
-            <div class="tools">
-                <button id="resetBtn" class="tool-btn" title="New Upload"><i class="material-icons">add_photo_alternate</i></button>
-                <div class="sep"></div>
-                <button id="zoomInBtn" class="tool-btn"><i class="material-icons">zoom_in</i></button>
-                <button id="zoomOutBtn" class="tool-btn"><i class="material-icons">zoom_out</i></button>
-            </div>
-            <button id="downloadBtn" class="btn-floating btn-large waves-effect waves-light accent-color disabled">
-                <i class="material-icons">save_alt</i>
-            </button>
-        </nav>
-
-        <main>
-            <div id="upload-view" class="view-container active">
-                <div class="glass-panel upload-card" id="drop-zone">
-                    <i class="material-icons large-icon">cloud_upload</i>
-                    <h2>Upload Document</h2>
-                    <p>Drag and drop a PDF or Image here<br>to automatically detect and edit text.</p>
-                    <button id="browseBtn" class="btn-large waves-effect waves-light primary-btn">
-                        Browse Files
-                    </button>
-                    <input type="file" id="fileInput" hidden accept=".pdf,.png,.jpg,.jpeg">
-                </div>
-            </div>
-
-            <div id="editor-view" class="view-container">
-                <div class="editor-chrome z-depth-3">
-                    <div id="konva-holder"></div>
-                </div>
-                <div class="instruction-toast">Click any text box to edit</div>
-            </div>
-        </main>
-    </div>
-
-    <div id="editModal" class="modal glass-modal">
-        <div class="modal-content">
-            <h4>Edit Text</h4>
-            <div class="input-field">
-                <input id="newText" type="text" class="white-text" autocomplete="off">
-                <label for="newText" class="active">Content</label>
+    <!-- App Layout -->
+    <div class="flex h-full w-full">
+        
+        <!-- Sidebar -->
+        <aside class="glass-sidebar w-20 flex flex-col items-center py-6 z-20 flex-shrink-0">
+            <div class="mb-8">
+                <i data-lucide="scan-line" class="text-indigo-400 w-8 h-8"></i>
             </div>
             
-            <div class="control-row">
-                <div class="range-wrap">
-                    <label>Size</label>
-                    <input type="range" id="fontSizeSlider" min="10" max="100">
-                    <span id="fontSizeValue">24px</span>
+            <nav class="flex flex-col gap-4 w-full px-2">
+                <button onclick="setTool('select')" id="tool-select" class="glass-btn active w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 group">
+                    <i data-lucide="mouse-pointer-2" class="w-5 h-5 group-hover:text-white transition-colors"></i>
+                    <span class="text-[10px] opacity-60">Select</span>
+                </button>
+                <button onclick="setTool('hand')" id="tool-hand" class="glass-btn w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 group">
+                    <i data-lucide="hand" class="w-5 h-5 group-hover:text-white transition-colors"></i>
+                    <span class="text-[10px] opacity-60">Pan</span>
+                </button>
+                <button onclick="triggerUpload()" class="glass-btn w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 group">
+                    <i data-lucide="upload-cloud" class="w-5 h-5 group-hover:text-white transition-colors"></i>
+                    <span class="text-[10px] opacity-60">Upload</span>
+                </button>
+                <button onclick="runOCR()" id="btn-ocr" class="glass-btn w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 group opacity-50 cursor-not-allowed" disabled>
+                    <i data-lucide="text-select" class="w-5 h-5 group-hover:text-white transition-colors"></i>
+                    <span class="text-[10px] opacity-60">OCR</span>
+                </button>
+            </nav>
+
+            <div class="mt-auto flex flex-col gap-4 w-full px-2">
+                <button onclick="downloadResult()" class="glass-btn w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 group">
+                    <i data-lucide="download" class="w-5 h-5 group-hover:text-white transition-colors"></i>
+                    <span class="text-[10px] opacity-60">Export</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col relative overflow-hidden">
+            <!-- Header -->
+            <header class="glass-panel mx-4 mt-4 p-4 rounded-2xl flex justify-between items-center z-10 h-16 shrink-0">
+                <div class="flex items-center gap-4">
+                    <h1 class="font-semibold text-lg tracking-tight">ScanEdit Pro <span class="text-xs font-normal opacity-50 ml-2 border border-white/10 px-2 py-0.5 rounded-full">v2.0 Beta</span></h1>
+                    <div id="loader" class="hidden flex items-center gap-2 text-xs text-indigo-300">
+                        <div class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span id="loader-text">Processing...</span>
+                    </div>
                 </div>
-                <div class="color-wrap">
-                    <label>Color</label>
-                    <input type="color" id="textColor" value="#000000">
+
+                <div class="flex items-center gap-3">
+                    <div class="bg-black/20 rounded-lg p-1 flex items-center gap-2 px-3 border border-white/5">
+                        <button onclick="adjustZoom(-0.1)" class="hover:text-white text-gray-400"><i data-lucide="minus" class="w-4 h-4"></i></button>
+                        <span id="zoom-level" class="w-12 text-center font-mono text-xs">100%</span>
+                        <button onclick="adjustZoom(0.1)" class="hover:text-white text-gray-400"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Canvas Container -->
+            <div id="canvas-container" class="flex-1 relative m-4 rounded-2xl overflow-hidden glass-panel border-dashed border-2 border-white/10 flex items-center justify-center bg-gray-900/50">
+                <div id="empty-state" class="text-center p-10 pointer-events-none">
+                    <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/10">
+                        <i data-lucide="image-plus" class="w-8 h-8 opacity-50"></i>
+                    </div>
+                    <h3 class="text-lg font-medium">No Document Loaded</h3>
+                    <p class="text-white/40 mt-2 text-sm max-w-xs mx-auto">Upload an image to start editing using the powerful liquid engine.</p>
+                </div>
+                <div id="konva-holder" class="absolute inset-0"></div>
+                <div class="loader-line absolute top-0 left-0 w-full" id="progress-bar"></div>
+            </div>
+            
+            <!-- Editing DOM Overlay -->
+            <textarea id="edit-textarea"></textarea>
+        </main>
+
+        <!-- Right Properties Panel -->
+        <aside class="glass-sidebar w-64 border-l border-white/10 z-20 hidden md:flex flex-col">
+            <div class="p-6 border-b border-white/10">
+                <h2 class="font-medium text-sm text-white/80 uppercase tracking-wider text-xs mb-1">Properties</h2>
+            </div>
+            
+            <div id="properties-content" class="p-6 space-y-6 opacity-50 pointer-events-none transition-opacity duration-300">
+                <!-- Font Size -->
+                <div>
+                    <label class="text-xs text-white/50 mb-2 block">Font Size</label>
+                    <div class="flex items-center gap-2">
+                        <input type="range" id="prop-size" min="8" max="72" value="16" class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+                        <span id="prop-size-val" class="text-xs font-mono w-8 text-right">16</span>
+                    </div>
+                </div>
+
+                <!-- Font Family -->
+                <div>
+                    <label class="text-xs text-white/50 mb-2 block">Font Family</label>
+                    <select id="prop-font" class="w-full bg-black/20 border border-white/10 rounded-lg p-2 text-xs focus:border-indigo-500 outline-none">
+                        <option value="Arial">Arial</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Inter">Inter</option>
+                    </select>
+                </div>
+
+                <!-- Color -->
+                <div>
+                    <label class="text-xs text-white/50 mb-2 block">Color</label>
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="setColor('black')" class="w-6 h-6 rounded-full bg-black border border-white/20 hover:scale-110 transition"></button>
+                        <button onclick="setColor('#ef4444')" class="w-6 h-6 rounded-full bg-red-500 border border-white/20 hover:scale-110 transition"></button>
+                        <button onclick="setColor('#3b82f6')" class="w-6 h-6 rounded-full bg-blue-500 border border-white/20 hover:scale-110 transition"></button>
+                        <button onclick="setColor('#22c55e')" class="w-6 h-6 rounded-full bg-green-500 border border-white/20 hover:scale-110 transition"></button>
+                        <input type="color" id="prop-color" class="w-6 h-6 rounded-full overflow-hidden border-0 p-0 cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="pt-6 border-t border-white/10">
+                    <button onclick="deleteSelected()" class="w-full py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 transition text-xs font-medium">
+                        Delete Selected
+                    </button>
                 </div>
             </div>
-        </div>
-        <div class="modal-footer glass-footer">
-            <a href="#!" class="modal-close btn-flat white-text">Cancel</a>
-            <button id="saveEditBtn" class="btn waves-effect waves-light primary-btn">Apply</button>
-        </div>
+        </aside>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
-    <script src="/static/script.js"></script>
+    <!-- Hidden Input -->
+    <input type="file" id="file-upload" class="hidden" accept="image/*" onchange="handleFile(this)">
+
+    <script>
+        // --- Initialization ---
+        lucide.createIcons();
+        
+        // --- State Management ---
+        let stage, layer, imgLayer, transformer;
+        let currentImage = null;
+        let currentTool = 'select'; // 'select' | 'hand'
+        let scale = 1;
+        
+        // --- Konva Setup ---
+        function initKonva() {
+            const container = document.getElementById('konva-holder');
+            
+            stage = new Konva.Stage({
+                container: 'konva-holder',
+                width: container.offsetWidth,
+                height: container.offsetHeight,
+                draggable: false
+            });
+
+            imgLayer = new Konva.Layer();
+            layer = new Konva.Layer();
+            
+            stage.add(imgLayer);
+            stage.add(layer);
+            
+            // Transformer for resizing
+            transformer = new Konva.Transformer({
+                nodes: [],
+                borderStroke: '#6366f1',
+                anchorStroke: '#6366f1',
+                anchorFill: '#ffffff',
+                anchorSize: 8,
+                borderDash: [4, 4],
+                keepRatio: true,
+                enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+            });
+            layer.add(transformer);
+
+            // Event Listeners
+            stage.on('click tap', (e) => {
+                if (currentTool === 'hand') return;
+                
+                // If clicked on empty stage, deselect
+                if (e.target === stage) {
+                    transformer.nodes([]);
+                    updatePropertiesPanel(null);
+                    return;
+                }
+
+                // If clicked on text
+                if (e.target.hasName('editable-text')) {
+                    const node = e.target;
+                    transformer.nodes([node]);
+                    updatePropertiesPanel(node);
+                }
+            });
+
+            // Zoom Logic
+            stage.on('wheel', (e) => {
+                e.evt.preventDefault();
+                const scaleBy = 1.1;
+                const oldScale = stage.scaleX();
+                const pointer = stage.getPointerPosition();
+
+                const mousePointTo = {
+                    x: (pointer.x - stage.x()) / oldScale,
+                    y: (pointer.y - stage.y()) / oldScale,
+                };
+
+                const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+                
+                // Limit zoom
+                if (newScale < 0.1 || newScale > 5) return;
+
+                stage.scale({ x: newScale, y: newScale });
+                const newPos = {
+                    x: pointer.x - mousePointTo.x * newScale,
+                    y: pointer.y - mousePointTo.y * newScale,
+                };
+                stage.position(newPos);
+                
+                document.getElementById('zoom-level').innerText = Math.round(newScale * 100) + '%';
+            });
+        }
+
+        // --- Core Logic ---
+
+        function triggerUpload() {
+            document.getElementById('file-upload').click();
+        }
+
+        function handleFile(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const imgObj = new Image();
+                    imgObj.onload = function() {
+                        loadImageToCanvas(imgObj);
+                    };
+                    imgObj.src = e.target.result;
+                    currentImage = e.target.result; // For Tesseract
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function loadImageToCanvas(imgObj) {
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('btn-ocr').disabled = false;
+            document.getElementById('btn-ocr').classList.remove('opacity-50', 'cursor-not-allowed');
+
+            imgLayer.destroyChildren();
+            layer.destroyChildren(); // Clear old text
+            layer.add(transformer);
+            
+            // Calculate best fit
+            const container = document.getElementById('konva-holder');
+            const aspect = imgObj.width / imgObj.height;
+            let w = container.offsetWidth * 0.8;
+            let h = w / aspect;
+            
+            if (h > container.offsetHeight * 0.8) {
+                h = container.offsetHeight * 0.8;
+                w = h * aspect;
+            }
+
+            const konvaImg = new Konva.Image({
+                image: imgObj,
+                x: (container.offsetWidth - w) / 2,
+                y: (container.offsetHeight - h) / 2,
+                width: w,
+                height: h,
+                name: 'doc-image'
+            });
+
+            imgLayer.add(konvaImg);
+            
+            // Center stage
+            stage.position({x: 0, y: 0});
+            stage.scale({x: 1, y: 1});
+            
+            imgLayer.batchDraw();
+        }
+
+        // --- OCR Logic (Client Side for Preview) ---
+        async function runOCR() {
+            if (!currentImage) return;
+
+            const loader = document.getElementById('loader');
+            const progress = document.getElementById('progress-bar');
+            
+            loader.classList.remove('hidden');
+            progress.style.display = 'block';
+
+            try {
+                // Tesseract.js running in browser
+                const { data } = await Tesseract.recognize(
+                    currentImage,
+                    'eng',
+                    { 
+                        logger: m => {
+                            if(m.status === 'recognizing text') {
+                                document.getElementById('loader-text').innerText = `Scanning: ${Math.round(m.progress * 100)}%`;
+                            }
+                        }
+                    }
+                );
+
+                renderOCRData(data);
+
+            } catch (err) {
+                console.error(err);
+                alert("OCR Failed. Please try a clearer image.");
+            } finally {
+                loader.classList.add('hidden');
+                progress.style.display = 'none';
+            }
+        }
+
+        function renderOCRData(data) {
+            // We need to map the OCR coordinates (original image size) to Canvas Image size
+            const docNode = imgLayer.findOne('.doc-image');
+            const imgNative = docNode.image();
+            
+            const scaleX = docNode.width() / imgNative.width;
+            const scaleY = docNode.height() / imgNative.height;
+            const offsetX = docNode.x();
+            const offsetY = docNode.y();
+
+            data.words.forEach(word => {
+                if (word.confidence < 30) return;
+
+                const textNode = new Konva.Text({
+                    x: offsetX + (word.bbox.x0 * scaleX),
+                    y: offsetY + (word.bbox.y0 * scaleY),
+                    text: word.text,
+                    fontSize: (word.bbox.y1 - word.bbox.y0) * scaleY * 0.9, // approx height
+                    fontFamily: 'Inter',
+                    fill: 'black',
+                    name: 'editable-text',
+                    draggable: true,
+                    padding: 2
+                });
+
+                // Add a white background behind text for "clean" editing look
+                // In a real app, this would be an inpainting request to the backend
+                const bg = new Konva.Rect({
+                    x: textNode.x(),
+                    y: textNode.y(),
+                    width: textNode.width(),
+                    height: textNode.height(),
+                    fill: 'white',
+                    opacity: 0.9,
+                    cornerRadius: 2,
+                    name: 'text-bg'
+                });
+
+                // Group them so they move together
+                // Note: Simplified here, we attach listeners to textNode directly usually
+                // For this demo, we just add the text node
+                
+                // Enhanced interaction: Double Click to Edit
+                textNode.on('dblclick dbltap', () => {
+                    handleTextEdit(textNode);
+                });
+
+                // Hover effects
+                textNode.on('mouseover', () => {
+                    document.body.style.cursor = 'text';
+                    textNode.fill('#4f46e5');
+                    layer.draw();
+                });
+                textNode.on('mouseout', () => {
+                    document.body.style.cursor = 'default';
+                    textNode.fill('black'); // Reset color logic needed if changed via props
+                    layer.draw();
+                });
+
+                layer.add(textNode);
+            });
+
+            layer.draw();
+        }
+
+        // --- Inline Editing (DOM Overlay) ---
+        function handleTextEdit(textNode) {
+            textNode.hide();
+            transformer.hide();
+            layer.draw();
+
+            // Create textarea over canvas
+            const textPosition = textNode.absolutePosition();
+            const areaPosition = {
+                x: stage.container().getBoundingClientRect().left + textPosition.x,
+                y: stage.container().getBoundingClientRect().top + textPosition.y,
+            };
+
+            const textarea = document.getElementById('edit-textarea');
+            textarea.style.display = 'block';
+            textarea.style.top = areaPosition.y + 'px';
+            textarea.style.left = areaPosition.x + 'px';
+            textarea.style.width = textNode.width() * stage.scaleX() + 'px';
+            textarea.style.height = textNode.height() * stage.scaleY() + 'px';
+            textarea.style.fontSize = textNode.fontSize() * stage.scaleX() + 'px';
+            textarea.value = textNode.text();
+            textarea.focus();
+
+            function removeTextarea() {
+                textarea.style.display = 'none';
+                textNode.text(textarea.value);
+                textNode.show();
+                transformer.show();
+                layer.draw();
+                textarea.removeEventListener('blur', removeTextarea);
+            }
+
+            textarea.addEventListener('keydown', function (e) {
+                if (e.keyCode === 13 && !e.shiftKey) {
+                    removeTextarea();
+                }
+            });
+            
+            // Handle clicking outside
+            setTimeout(() => {
+                textarea.addEventListener('blur', removeTextarea);
+            }, 100);
+        }
+
+        // --- Tools & Properties ---
+
+        function setTool(toolName) {
+            currentTool = toolName;
+            
+            // Update UI
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tool-${toolName}`).classList.add('active');
+
+            if (toolName === 'hand') {
+                stage.draggable(true);
+                transformer.nodes([]);
+                document.body.style.cursor = 'grab';
+            } else {
+                stage.draggable(false);
+                document.body.style.cursor = 'default';
+            }
+        }
+
+        function updatePropertiesPanel(node) {
+            const panel = document.getElementById('properties-content');
+            if (!node) {
+                panel.classList.add('opacity-50', 'pointer-events-none');
+                return;
+            }
+            panel.classList.remove('opacity-50', 'pointer-events-none');
+            
+            // Populate values
+            document.getElementById('prop-size').value = node.fontSize();
+            document.getElementById('prop-size-val').innerText = Math.round(node.fontSize());
+            document.getElementById('prop-font').value = node.fontFamily();
+        }
+
+        // Property Event Listeners
+        document.getElementById('prop-size').addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            document.getElementById('prop-size-val').innerText = val;
+            const nodes = transformer.nodes();
+            if (nodes.length > 0) {
+                nodes[0].fontSize(val);
+                layer.batchDraw();
+            }
+        });
+
+        document.getElementById('prop-font').addEventListener('change', (e) => {
+            const nodes = transformer.nodes();
+            if (nodes.length > 0) {
+                nodes[0].fontFamily(e.target.value);
+                layer.batchDraw();
+            }
+        });
+        
+        document.getElementById('prop-color').addEventListener('input', (e) => {
+            setColor(e.target.value);
+        });
+
+        function setColor(color) {
+            const nodes = transformer.nodes();
+            if (nodes.length > 0) {
+                nodes[0].fill(color);
+                layer.batchDraw();
+            }
+        }
+
+        function deleteSelected() {
+            const nodes = transformer.nodes();
+            nodes.forEach(n => n.destroy());
+            transformer.nodes([]);
+            layer.batchDraw();
+            updatePropertiesPanel(null);
+        }
+
+        function downloadResult() {
+            // Unselect everything for clean screenshot
+            transformer.hide();
+            layer.draw();
+            
+            const dataURL = stage.toDataURL({ pixelRatio: 2 });
+            const link = document.createElement('a');
+            link.download = 'edited-document.png';
+            link.href = dataURL;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            transformer.show();
+        }
+
+        function adjustZoom(delta) {
+            const oldScale = stage.scaleX();
+            const newScale = oldScale + delta;
+            stage.scale({ x: newScale, y: newScale });
+            stage.batchDraw();
+            document.getElementById('zoom-level').innerText = Math.round(newScale * 100) + '%';
+        }
+
+        // Init
+        window.onload = initKonva;
+        
+        // Window Resize
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('konva-holder');
+            stage.width(container.offsetWidth);
+            stage.height(container.offsetHeight);
+            stage.batchDraw();
+        });
+
+    </script>
 </body>
 </html>
