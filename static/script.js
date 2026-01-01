@@ -4,7 +4,7 @@ gsap.to("#blob2", { x: -120, y: -80, duration: 15, repeat: -1, yoyo: true, ease:
 
 document.addEventListener('DOMContentLoaded', () => M.AutoInit());
 
-// Fix drag and drop globally
+// Prevent default drag behaviors globally
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => e.preventDefault());
 
@@ -22,30 +22,48 @@ const saveEditBtn = document.getElementById('saveEditBtn');
 let stage, layer, sessionId, edits = [];
 let currentWord = null;
 let currentGroup = null;
+let scale = 1;  // For zoom
 
-['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
-    dropZone.addEventListener(event, e => { e.preventDefault(); e.stopPropagation(); });
-});
-
-dropZone.addEventListener('dragenter', () => dropZone.classList.add('dragover'));
-dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
+// Avoid double triggers by using once: false and stopPropagation
+dropZone.addEventListener('dragenter', (e) => {
+    e.stopPropagation();
+    dropZone.classList.add('dragover');
+}, false);
+dropZone.addEventListener('dragover', (e) => {
+    e.stopPropagation();
+    dropZone.classList.add('dragover');
+}, false);
+dropZone.addEventListener('dragleave', (e) => {
+    e.stopPropagation();
+    dropZone.classList.remove('dragover');
+}, false);
+dropZone.addEventListener('drop', (e) => {
+    e.stopPropagation();
     dropZone.classList.remove('dragover');
     if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-});
+}, false);
 
-dropZone.onclick = () => fileInput.click();
-browseBtn.onclick = () => fileInput.click();
-fileInput.onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+dropZone.addEventListener('click', () => fileInput.click(), false);
+browseBtn.addEventListener('click', () => fileInput.click(), false);
+fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+}, false);
 
 async function handleFile(file) {
+    // Show processing only once
+    if (dropZone.innerHTML.includes("Processing")) return;  // Prevent double call
+    
     dropZone.innerHTML = "<h5>Processing document...</h5><p>Please wait</p>";
     const form = new FormData();
     form.append("file", file);
 
     const res = await fetch('/upload', { method: 'POST', body: form });
     const data = await res.json();
+    
+    if (data.error) {
+        dropZone.innerHTML = "<h5>Error: " + data.error + "</h5>";
+        return;
+    }
 
     sessionId = data.session_id;
     initEditor(data.image_url, data.words);
@@ -58,18 +76,27 @@ async function handleFile(file) {
 }
 
 function initEditor(imageUrl, words) {
+    const container = document.getElementById('konva-holder');
     const img = new Image();
     img.onload = () => {
+        // Fit to viewport: calculate scale to fit 80% of height/width
+        const maxWidth = window.innerWidth * 0.8;
+        const maxHeight = window.innerHeight * 0.8;
+        const ratio = Math.min(maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
+        scale = ratio;  // Initial scale
+        
         stage = new Konva.Stage({
             container: 'konva-holder',
-            width: img.naturalWidth,
-            height: img.naturalHeight
+            width: img.naturalWidth * ratio,
+            height: img.naturalHeight * ratio,
+            draggable: true  // Allow panning
         });
         layer = new Konva.Layer();
         stage.add(layer);
 
         const bg = new Konva.Image({ image: img });
         layer.add(bg);
+        layer.scale({ x: ratio, y: ratio });
 
         words.forEach(word => {
             const group = new Konva.Group({ x: word.x, y: word.y });
@@ -105,67 +132,36 @@ function initEditor(imageUrl, words) {
         });
 
         layer.draw();
+        
+        // Add zoom controls
+        addZoomControls();
     };
     img.src = imageUrl;
 }
 
-fontSizeSlider.addEventListener('input', () => {
-    fontSizeValue.textContent = fontSizeSlider.value;
-});
+function addZoomControls() {
+    // Add buttons to sidebar or main
+    const sidebar = document.querySelector('.sidebar');
+    const zoomIn = document.createElement('button');
+    zoomIn.textContent = '+';
+    zoomIn.classList.add('btn', 'waves-effect', 'waves-light');
+    zoomIn.style.marginTop = '20px';
+    zoomIn.onclick = () => zoom(1.2);
 
-saveEditBtn.onclick = () => {
-    if (!currentWord || !currentGroup) return;
+    const zoomOut = document.createElement('button');
+    zoomOut.textContent = '-';
+    zoomOut.classList.add('btn', 'waves-effect', 'waves-light');
+    zoomOut.style.marginTop = '10px';
+    zoomOut.onclick = () => zoom(0.8);
 
-    const newText = newTextInput.value || currentWord.text;
-    const fontSize = parseInt(fontSizeSlider.value);
-    const color = textColor.value;
-
-    const edited = {
-        ...currentWord,
-        new_text: newText,
-        font_size: fontSize,
-        color: color
-    };
-
-    edits = edits.filter(e => !(e.x === currentWord.x && e.y === currentWord.y));
-    edits.push(edited);
-
-    // Update canvas preview
-    const rect = currentGroup.getChildren()[0];
-    rect.fill('white');
-
-    // Remove old text if exists
-    if (currentGroup.getChildren().length > 1) {
-        currentGroup.getChildren()[1].destroy();
-    }
-
-    const konvaText = new Konva.Text({
-        text: newText,
-        fontSize: fontSize,
-        fill: color,
-        width: currentWord.w,
-        height: currentWord.h,
-        align: 'center',
-        verticalAlign: 'middle'
-    });
-    currentGroup.add(konvaText);
-    layer.draw();
-
-    downloadBtn.classList.add('active');
-    M.Modal.getInstance(modal).close();
-};
-
-downloadBtn.onclick = async () => {
-    if (!downloadBtn.classList.contains('active')) return;
-
-    downloadBtn.innerHTML = "⏳";
-    const form = new FormData();
-    form.append('session_id', sessionId);
-    form.append('edits', JSON.stringify(edits));
-
-    const res = await fetch('/edit', { method: 'POST', body: form });
-    const data = await res.json();
-
-    window.location.href = data.download_url;
-    downloadBtn.innerHTML = "✓";
-};
+    sidebar.appendChild(zoomIn);
+    sidebar.appendChild(zoomOut);
+    
+    // Mouse wheel zoom
+    stage.on('wheel', (e) => {
+        e.evt.preventDefault();
+        const oldScale = stage.scaleX();
+        const pointer = stage.getPointerPosition();
+        const mousePointTo = {
+            x: (pointer.x / oldScale) - stage.x() / oldScale,
+            y: (pointer.y / oldScale) - stage.y() / oldScale
