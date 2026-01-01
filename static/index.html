@@ -1,44 +1,79 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ScanEdit Pro | AI PDF</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScanEdit Pro | AI PDF Editor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
     <style>
-        :root { --p: #6366f1; --bg: #0f172a; }
-        body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: white; overflow: hidden; }
-        .liquid-blob { position: fixed; width: 400px; height: 400px; background: var(--p); filter: blur(100px); opacity: 0.2; z-index: -1; top: 20%; left: 30%; }
-        .glass-shell { display: flex; height: 100vh; padding: 20px; box-sizing: border-box; }
-        .sidebar { width: 100px; background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; padding: 30px 0; }
-        .main { flex: 1; margin-left: 20px; display: flex; align-items: center; justify-content: center; }
-        .drop-zone { width: 80%; max-width: 600px; padding: 80px; background: rgba(255,255,255,0.03); border: 2px dashed rgba(255,255,255,0.2); border-radius: 40px; text-align: center; cursor: pointer; transition: 0.3s; }
-        .drop-zone.dragover { border-color: var(--p); background: rgba(99, 102, 241, 0.1); }
-        .btn-export { width: 60px; height: 60px; border-radius: 50%; border: none; background: #f43f5e; color: white; cursor: pointer; font-size: 20px; margin-top: auto; box-shadow: 0 10px 20px rgba(244,63,94,0.4); opacity: 0.3; pointer-events: none; }
+        :root { --primary: #6366f1; --accent: #f43f5e; --bg: #0f172a; }
+        body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: white; overflow: hidden; height: 100vh; }
+        .liquid-blob { position: fixed; width: 500px; height: 500px; background: var(--primary); filter: blur(120px); opacity: 0.18; z-index: -1; border-radius: 50%; }
+        #blob1 { top: 10%; left: 20%; }
+        #blob2 { bottom: 10%; right: 20%; background: var(--accent); opacity: 0.15; }
+        .glass-container { display: flex; height: 100vh; padding: 30px; box-sizing: border-box; }
+        .sidebar { width: 90px; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 28px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; padding: 40px 0; gap: 30px; }
+        .main-content { flex: 1; margin-left: 30px; display: flex; align-items: center; justify-content: center; }
+        .drop-zone { width: 80%; max-width: 650px; padding: 100px 40px; background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.25); border-radius: 40px; text-align: center; cursor: pointer; transition: all 0.4s; }
+        .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: rgba(99,102,241,0.1); }
+        .btn-export { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); box-shadow: 0 10px 30px rgba(244,63,94,0.4); opacity: 0.4; pointer-events: none; }
         .btn-export.active { opacity: 1; pointer-events: all; }
-        #konva-holder { background: white; border-radius: 12px; box-shadow: 0 30px 60px rgba(0,0,0,0.5); }
+        #konva-holder { background: white; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); max-height: 90vh; overflow: auto; }
     </style>
 </head>
 <body>
-    <div class="liquid-blob"></div>
-    <div class="glass-shell">
+    <div class="liquid-blob" id="blob1"></div>
+    <div class="liquid-blob" id="blob2"></div>
+
+    <div class="glass-container">
         <aside class="sidebar">
-            <div style="font-weight: 800; font-size: 24px;">S<span style="color:var(--p)">E</span></div>
-            <button id="downloadBtn" class="btn-export">↓</button>
+            <h4 style="font-weight:700; letter-spacing:1px;">S<span style="color:var(--primary)">E</span></h4>
+            <button id="downloadBtn" class="btn btn-export waves-effect waves-light z-depth-3">↓</button>
         </aside>
-        <main class="main">
+
+        <main class="main-content">
             <div id="upload-view">
-                <div id="drop-zone" class="drop-zone">
-                    <h1 style="margin:0">ScanEdit Pro</h1>
-                    <p style="opacity: 0.6">Drag document here or click to browse</p>
-                    <input type="file" id="fileInput" hidden>
+                <div id="drop-zone" class="drop-zone z-depth-2">
+                    <h3>ScanEdit Pro</h3>
+                    <p class="grey-text text-lighten-1">Drag & drop your scanned PDF or image<br>or click to browse</p>
+                    <input type="file" id="fileInput" hidden accept=".pdf,.png,.jpg,.jpeg">
                 </div>
             </div>
-            <div id="editor-view" style="display:none; height: 90vh; overflow: auto; padding: 20px;">
+
+            <div id="editor-view" style="display:none; width:100%; height:90vh;">
                 <div id="konva-holder"></div>
             </div>
         </main>
     </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <h5>Edit Text</h5>
+            <div class="input-field">
+                <input id="newText" type="text" class="white-text">
+                <label for="newText">New Text</label>
+            </div>
+            <div class="input-field">
+                <input type="range" id="fontSizeSlider" min="8" max="80" value="24">
+                <label>Font Size: <span id="fontSizeValue">24</span>px</label>
+            </div>
+            <div class="input-field">
+                <label>Text Color</label><br><br>
+                <input type="color" id="textColor" value="#000000">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="#!" class="modal-close waves-effect btn-flat grey-text">Cancel</a>
+            <button id="saveEditBtn" class="btn waves-effect waves-light" style="background:var(--primary);">Save</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
     <script src="/static/script.js"></script>
 </body>
 </html>
