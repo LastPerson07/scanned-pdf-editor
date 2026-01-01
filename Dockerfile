@@ -1,12 +1,16 @@
 FROM python:3.9-slim
 
-# Install system dependencies for OCR and Image Processing
+# Install system dependencies: Tesseract OCR + languages + fonts + OpenCV libs
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
+    tesseract-ocr-eng \  # Add more languages if needed, e.g. tesseract-ocr-fra
     libtesseract-dev \
-    # Using libgl1 instead of the deprecated libgl1-mesa-glx
     libgl1 \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    fonts-dejavu-core \  # Provides DejaVuSans.ttf
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -18,10 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
-# Create the folder where PDFs will be processed
+# Create uploads folder
 RUN mkdir -p uploads && chmod 777 uploads
 
-# Use the port from render.yaml
 EXPOSE 10000
 
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port $PORT"]
