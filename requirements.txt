@@ -3,6 +3,6 @@ uvicorn
 python-multipart
 pytesseract
 opencv-python-headless
-pymupdf
+pymupdf  # This is the correct package for fitz (PyMuPDF)
 Pillow
 numpy
