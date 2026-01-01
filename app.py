@@ -5,7 +5,7 @@ import shutil
 import cv2
 import numpy as np
 import fitz  # PyMuPDF
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image, ImageDraw, ImageFont
@@ -17,63 +17,16 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
-# Mount CSS and other static files (excluding script.js to avoid MIME issues)
-app.mount("/static", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-
-# Explicitly serve script.js with correct MIME type to fix 415 error
-@app.get("/static/script.js")
-async def serve_script():
-    script_path = os.path.join(STATIC_DIR, "script.js")
-    if not os.path.exists(script_path):
-        return JSONResponse(status_code=404, content={"error": "script.js not found"})
-    with open(script_path, "rb") as f:
-        content = f.read()
-    return Response(content=content, media_type="text/javascript")
-
-# Serve index.html
-@app.get("/")
-async def home():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return JSONResponse(status_code=500, content={"error": "index.html not found"})
-
-# Mount uploads
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/data", StaticFiles(directory=UPLOAD_DIR), name="data")
 
-def get_ocr_words(img_path):
-    import pytesseract
-    from PIL import Image
-    
-    cv_img = cv2.imread(img_path)
-    if cv_img is None:
-        raise ValueError("Failed to load image for OCR")
-    
-    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-    
-    pil_img = Image.fromarray(thresh)
-    
-    data = pytesseract.image_to_data(
-        pil_img,
-        config='--oem 3 --psm 6',
-        output_type=pytesseract.Output.DICT
-    )
-    
-    words = []
-    for i in range(len(data["text"])):
-        conf = int(data["conf"][i])
-        text = data["text"][i].strip()
-        if conf > 35 and text:
-            words.append({
-                "text": text,
-                "x": data["left"][i],
-                "y": data["top"][i],
-                "w": data["width"][i],
-                "h": data["height"][i]
-            })
-    return words
+# --- Routes ---
+
+@app.get("/")
+async def home():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -82,21 +35,25 @@ async def upload(file: UploadFile = File(...)):
         session_path = os.path.join(UPLOAD_DIR, sid)
         os.makedirs(session_path, exist_ok=True)
 
-        orig_path = os.path.join(session_path, f"original.{file.filename.split('.')[-1].lower()}")
+        # Save Original
+        ext = file.filename.split('.')[-1].lower()
+        orig_path = os.path.join(session_path, f"original.{ext}")
         with open(orig_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
+        # Convert to Image for Processing
         work_img_path = os.path.join(session_path, "page.png")
 
-        if file.filename.lower().endswith(".pdf"):
+        if ext == "pdf":
             doc = fitz.open(orig_path)
-            page = doc[0]
-            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
+            page = doc[0] # Handle first page only for MVP
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Higher res for OCR
             pix.save(work_img_path)
         else:
             img = Image.open(orig_path).convert("RGB")
             img.save(work_img_path)
 
+        # Run OCR
         words = get_ocr_words(work_img_path)
 
         return {
@@ -105,7 +62,7 @@ async def upload(file: UploadFile = File(...)):
             "words": words
         }
     except Exception as e:
-        print("Upload Error:", str(e))
+        print(f"Upload Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.post("/edit")
@@ -115,41 +72,88 @@ async def edit(session_id: str = Form(...), edits: str = Form(...)):
         session_path = os.path.join(UPLOAD_DIR, session_id)
         img_path = os.path.join(session_path, "page.png")
 
-        img = cv2.imread(img_path)
-        if img is None:
-            raise Exception("Failed to load image for editing")
+        if not os.path.exists(img_path):
+             return JSONResponse(status_code=404, content={"error": "Session expired"})
 
-        mask = np.zeros(img.shape[:2], dtype=np.uint8)
+        # Load for Inpainting (OpenCV)
+        img_cv = cv2.imread(img_path)
+        mask = np.zeros(img_cv.shape[:2], dtype=np.uint8)
+
+        # Create mask from edit regions
         for e in edit_list:
-            x, y, w, h = e['x'], e['y'], e['w'], e['h']
-            cv2.rectangle(mask, (x-3, y-3), (x+w+3, y+h+3), 255, -1)
+            x, y, w, h = int(e['x']), int(e['y']), int(e['w']), int(e['h'])
+            # Dilate mask slightly to cover artifacts
+            cv2.rectangle(mask, (x-2, y-2), (x+w+2, y+h+2), 255, -1)
 
-        inpainted = cv2.inpaint(img, mask, inpaintRadius=5, flags=cv2.INPAINT_TELEA)
-        pil_img = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
-        draw = ImageDraw.Draw(pil_img)
+        # Inpaint
+        inpainted = cv2.inpaint(img_cv, mask, 3, cv2.INPAINT_TELEA)
+
+        # Convert to PIL for Text Drawing
+        img_pil = Image.fromarray(cv2.cvtColor(inpainted, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+
+        # Attempt to load a good font
+        try:
+            # Common Linux path
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            default_font = ImageFont.truetype(font_path, 20)
+        except:
+            default_font = ImageFont.load_default()
 
         for e in edit_list:
-            font_size = e.get('font_size', int(e['h'] * 0.8))
+            text = e['new_text']
+            size = int(e.get('font_size', 20))
             color_hex = e.get('color', '#000000')
+            
+            # Parse color
             color = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+            
             try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+                font = ImageFont.truetype(font_path, size) if 'font_path' in locals() else ImageFont.load_default()
             except:
                 font = ImageFont.load_default()
 
-            text = e['new_text']
+            # Centering logic
             bbox = draw.textbbox((0, 0), text, font=font)
             text_w = bbox[2] - bbox[0]
             text_h = bbox[3] - bbox[1]
-            pos_x = e['x'] + (e['w'] - text_w) // 2
-            pos_y = e['y'] + (e['h'] - text_h) // 2
+            
+            x, y, w, h = int(e['x']), int(e['y']), int(e['w']), int(e['h'])
+            pos_x = x + (w - text_w) // 2
+            pos_y = y + (h - text_h) // 2
 
             draw.text((pos_x, pos_y), text, fill=color, font=font)
 
+        # Save as PDF
         output_pdf = os.path.join(session_path, "edited.pdf")
-        pil_img.save(output_pdf, "PDF", resolution=300.0)
+        img_pil.save(output_pdf, "PDF", resolution=150.0)
 
         return {"download_url": f"/data/{session_id}/edited.pdf"}
+    
     except Exception as e:
-        print("Edit Error:", str(e))
+        print(f"Edit Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+# --- Helper ---
+def get_ocr_words(img_path):
+    import pytesseract
+    
+    img = cv2.imread(img_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Preprocessing for better OCR
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+
+    data = pytesseract.image_to_data(thresh, output_type=pytesseract.Output.DICT)
+    
+    words = []
+    for i in range(len(data['text'])):
+        if int(data['conf'][i]) > 40 and data['text'][i].strip():
+            words.append({
+                "text": data['text'][i],
+                "x": data['left'][i],
+                "y": data['top'][i],
+                "w": data['width'][i],
+                "h": data['height'][i]
+            })
+    return words
