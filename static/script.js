@@ -1,167 +1,347 @@
-gsap.from(".glass-container", { opacity: 0, y: 40, duration: 1.2, ease: "power4.out" });
-gsap.to("#blob1", { x: 150, y: 100, duration: 12, repeat: -1, yoyo: true, ease: "sine.inOut" });
-gsap.to("#blob2", { x: -120, y: -80, duration: 15, repeat: -1, yoyo: true, ease: "sine.inOut" });
+document.addEventListener('DOMContentLoaded', () => {
+    // Init Materialize components
+    M.AutoInit();
+    
+    // Animations
+    gsap.from(".upload-card", { opacity: 0, y: 30, duration: 1, ease: "power3.out" });
+    gsap.to("#blob1", { x: 150, y: 100, duration: 12, repeat: -1, yoyo: true, ease: "sine.inOut" });
+    gsap.to("#blob2", { x: -120, y: -80, duration: 15, repeat: -1, yoyo: true, ease: "sine.inOut" });
+});
 
-document.addEventListener('DOMContentLoaded', () => M.AutoInit());
-
-// Prevent default drag behaviors globally
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => e.preventDefault());
-
+// DOM Elements
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('fileInput');
 const browseBtn = document.getElementById('browseBtn');
 const downloadBtn = document.getElementById('downloadBtn');
-const modal = document.getElementById('editModal');
+const loader = document.getElementById('loader-overlay');
+const modalElement = document.getElementById('editModal');
+// Inputs
 const newTextInput = document.getElementById('newText');
 const fontSizeSlider = document.getElementById('fontSizeSlider');
 const fontSizeValue = document.getElementById('fontSizeValue');
 const textColor = document.getElementById('textColor');
 const saveEditBtn = document.getElementById('saveEditBtn');
+const zoomInBtn = document.getElementById('zoomInBtn');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+const resetBtn = document.getElementById('resetBtn');
 
-let stage, layer, sessionId, edits = [];
-let currentWord = null;
-let currentGroup = null;
-let scale = 1;  // For zoom
+// State
+let stage, layer;
+let sessionId = null;
+let currentWordData = null; // The original OCR data
+let currentGroup = null;    // The Konva Group
+let edits = [];             // Array to store changes
+let scaleBy = 1.1;
 
-// Avoid double triggers by using once: false and stopPropagation
-dropZone.addEventListener('dragenter', (e) => {
-    e.stopPropagation();
-    dropZone.classList.add('dragover');
-}, false);
-dropZone.addEventListener('dragover', (e) => {
-    e.stopPropagation();
-    dropZone.classList.add('dragover');
-}, false);
-dropZone.addEventListener('dragleave', (e) => {
-    e.stopPropagation();
-    dropZone.classList.remove('dragover');
-}, false);
-dropZone.addEventListener('drop', (e) => {
-    e.stopPropagation();
-    dropZone.classList.remove('dragover');
-    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-}, false);
+// --- Event Listeners ---
 
-dropZone.addEventListener('click', () => fileInput.click(), false);
-browseBtn.addEventListener('click', () => fileInput.click(), false);
+// 1. File Upload Logic
+browseBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // Stop bubbling
+    fileInput.click();
+});
+
 fileInput.addEventListener('change', (e) => {
-    if (e.target.files[0]) handleFile(e.target.files[0]);
-}, false);
+    if (e.target.files[0]) processFile(e.target.files[0]);
+});
 
-async function handleFile(file) {
-    // Show processing only once
-    if (dropZone.innerHTML.includes("Processing")) return;  // Prevent double call
+// Drag & Drop
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('active');
+});
+dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('active');
+});
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('active');
+    if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+
+async function processFile(file) {
+    loader.style.display = 'flex';
     
-    dropZone.innerHTML = "<h5>Processing document...</h5><p>Please wait</p>";
-    const form = new FormData();
-    form.append("file", file);
+    const formData = new FormData();
+    formData.append("file", file);
 
-    const res = await fetch('/upload', { method: 'POST', body: form });
-    const data = await res.json();
-    
-    if (data.error) {
-        dropZone.innerHTML = "<h5>Error: " + data.error + "</h5>";
-        return;
-    }
+    try {
+        const res = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await res.json();
 
-    sessionId = data.session_id;
-    initEditor(data.image_url, data.words);
+        if (data.error) throw new Error(data.error);
 
-    gsap.to("#upload-view", { opacity: 0, duration: 0.5, onComplete: () => {
+        sessionId = data.session_id;
+        initEditor(data.image_url, data.words);
+
+        // Switch Views
         document.getElementById('upload-view').style.display = 'none';
         document.getElementById('editor-view').style.display = 'block';
-        gsap.from("#editor-view", { opacity: 0, y: 30, duration: 0.7 });
-    }});
+        downloadBtn.classList.remove('disabled');
+        
+        gsap.from("#editor-view", { opacity: 0, scale: 0.95, duration: 0.5 });
+
+    } catch (err) {
+        M.toast({html: 'Error: ' + err.message, classes: 'red rounded'});
+    } finally {
+        loader.style.display = 'none';
+    }
 }
 
-function initEditor(imageUrl, words) {
+// 2. Konva Editor Logic
+function initEditor(imgUrl, words) {
     const container = document.getElementById('konva-holder');
+    const width = container.clientWidth;
+    const height = window.innerHeight * 0.8;
+
     const img = new Image();
     img.onload = () => {
-        // Fit to viewport: calculate scale to fit 80% of height/width
-        const maxWidth = window.innerWidth * 0.8;
-        const maxHeight = window.innerHeight * 0.8;
-        const ratio = Math.min(maxWidth / img.naturalWidth, maxHeight / img.naturalHeight);
-        scale = ratio;  // Initial scale
-        
+        // Calculate initial fit
+        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const initialScale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+
         stage = new Konva.Stage({
             container: 'konva-holder',
-            width: img.naturalWidth * ratio,
-            height: img.naturalHeight * ratio,
-            draggable: true  // Allow panning
+            width: width,
+            height: height,
+            draggable: true
         });
+
         layer = new Konva.Layer();
         stage.add(layer);
 
-        const bg = new Konva.Image({ image: img });
-        layer.add(bg);
-        layer.scale({ x: ratio, y: ratio });
+        // Background Image
+        const bgImage = new Konva.Image({
+            image: img,
+            x: 0,
+            y: 0,
+        });
+        layer.add(bgImage);
 
-        words.forEach(word => {
-            const group = new Konva.Group({ x: word.x, y: word.y });
+        // Center the image initially
+        stage.scale({ x: initialScale, y: initialScale });
+        
+        // Render OCR Words
+        words.forEach((word, index) => {
+            const group = new Konva.Group({
+                x: word.x,
+                y: word.y,
+                width: word.w,
+                height: word.h,
+                name: 'word-group',
+                id: 'word-' + index // unique ID
+            });
+
+            // Highlight Box (Invisible normally)
             const rect = new Konva.Rect({
                 width: word.w,
                 height: word.h,
-                fill: 'rgba(99,102,241,0.08)'
+                fill: 'rgba(99, 102, 241, 0.1)',
+                stroke: 'rgba(99, 102, 241, 0.5)',
+                strokeWidth: 1,
+                opacity: 0 // hidden until hover
             });
+
             group.add(rect);
             layer.add(group);
 
+            // Interaction
             group.on('mouseenter', () => {
-                rect.fill('rgba(99,102,241,0.25)');
-                layer.draw();
                 document.body.style.cursor = 'pointer';
-            });
-            group.on('mouseleave', () => {
-                rect.fill('rgba(99,102,241,0.08)');
-                layer.draw();
-                document.body.style.cursor = 'default';
+                rect.opacity(1);
+                layer.batchDraw();
             });
 
-            group.on('click', () => {
-                currentGroup = group;
-                currentWord = word;
-                newTextInput.value = word.text || '';
-                fontSizeSlider.value = Math.round(word.h * 0.8);
-                fontSizeValue.textContent = fontSizeSlider.value;
-                textColor.value = '#000000';
-                M.updateTextFields();
-                M.Modal.getInstance(modal).open();
+            group.on('mouseleave', () => {
+                document.body.style.cursor = 'default';
+                rect.opacity(0);
+                layer.batchDraw();
+            });
+
+            group.on('click tap', () => {
+                openEditModal(word, group);
             });
         });
 
         layer.draw();
-        
-        // Add zoom controls
-        addZoomControls();
+        setupZoom();
     };
-    img.src = imageUrl;
+    img.src = imgUrl;
 }
 
-function addZoomControls() {
-    // Add buttons to sidebar or main
-    const sidebar = document.querySelector('.sidebar');
-    const zoomIn = document.createElement('button');
-    zoomIn.textContent = '+';
-    zoomIn.classList.add('btn', 'waves-effect', 'waves-light');
-    zoomIn.style.marginTop = '20px';
-    zoomIn.onclick = () => zoom(1.2);
-
-    const zoomOut = document.createElement('button');
-    zoomOut.textContent = '-';
-    zoomOut.classList.add('btn', 'waves-effect', 'waves-light');
-    zoomOut.style.marginTop = '10px';
-    zoomOut.onclick = () => zoom(0.8);
-
-    sidebar.appendChild(zoomIn);
-    sidebar.appendChild(zoomOut);
-    
-    // Mouse wheel zoom
+// 3. Zoom Controls
+function setupZoom() {
     stage.on('wheel', (e) => {
         e.evt.preventDefault();
         const oldScale = stage.scaleX();
         const pointer = stage.getPointerPosition();
+
         const mousePointTo = {
-            x: (pointer.x / oldScale) - stage.x() / oldScale,
-            y: (pointer.y / oldScale) - stage.y() / oldScale
+            x: (pointer.x - stage.x()) / oldScale,
+            y: (pointer.y - stage.y()) / oldScale,
+        };
+
+        let newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+        stage.scale({ x: newScale, y: newScale });
+
+        const newPos = {
+            x: pointer.x - mousePointTo.x * newScale,
+            y: pointer.y - mousePointTo.y * newScale,
+        };
+        stage.position(newPos);
+        stage.batchDraw();
+    });
+}
+
+zoomInBtn.onclick = () => {
+    const oldScale = stage.scaleX();
+    stage.scale({ x: oldScale * 1.2, y: oldScale * 1.2 });
+    stage.batchDraw();
+};
+
+zoomOutBtn.onclick = () => {
+    const oldScale = stage.scaleX();
+    stage.scale({ x: oldScale * 0.8, y: oldScale * 0.8 });
+    stage.batchDraw();
+};
+
+resetBtn.onclick = () => {
+    window.location.reload();
+}
+
+// 4. Editing Logic
+function openEditModal(wordData, group) {
+    currentWordData = wordData;
+    currentGroup = group;
+    
+    // Check if we already edited this word locally
+    const existingEdit = edits.find(e => e.x === wordData.x && e.y === wordData.y);
+    
+    if (existingEdit) {
+        newTextInput.value = existingEdit.new_text;
+        fontSizeSlider.value = existingEdit.font_size;
+        textColor.value = existingEdit.color;
+    } else {
+        newTextInput.value = wordData.text;
+        fontSizeSlider.value = Math.max(10, Math.round(wordData.h * 0.75));
+        textColor.value = "#000000";
+    }
+
+    fontSizeValue.textContent = fontSizeSlider.value;
+    M.updateTextFields();
+    
+    const instance = M.Modal.getInstance(modalElement);
+    instance.open();
+    
+    // Auto-focus input
+    setTimeout(() => newTextInput.focus(), 100);
+}
+
+// Slider update UI
+fontSizeSlider.addEventListener('input', (e) => {
+    fontSizeValue.textContent = e.target.value;
+});
+
+// Save changes locally and update Canvas
+saveEditBtn.addEventListener('click', () => {
+    const newText = newTextInput.value;
+    const size = parseInt(fontSizeSlider.value);
+    const color = textColor.value;
+
+    // Visual Update on Canvas
+    // Remove old text preview if exists
+    const oldPreview = currentGroup.findOne('.preview-text');
+    if (oldPreview) oldPreview.destroy();
+
+    const textPreview = new Konva.Text({
+        text: newText,
+        fontSize: size,
+        fill: color,
+        fontFamily: 'Arial', // Will be replaced by backend font
+        name: 'preview-text',
+        listening: false
+    });
+
+    // Center text in the box
+    const textWidth = textPreview.width();
+    const textHeight = textPreview.height();
+    const boxWidth = currentWordData.w;
+    const boxHeight = currentWordData.h;
+
+    textPreview.position({
+        x: (boxWidth - textWidth) / 2,
+        y: (boxHeight - textHeight) / 2
+    });
+    
+    // Add a white background to hide original text on canvas (preview only)
+    const bgPreview = new Konva.Rect({
+        width: boxWidth,
+        height: boxHeight,
+        fill: 'white',
+        name: 'preview-bg'
+    });
+    
+    // If updating existing, remove old bg
+    const oldBg = currentGroup.findOne('.preview-bg');
+    if(oldBg) oldBg.destroy();
+
+    currentGroup.add(bgPreview);
+    currentGroup.add(textPreview);
+    bgPreview.moveToBottom(); // keep rect trigger on top? No, rect is invisible
+    
+    // Update State
+    const editObj = {
+        x: currentWordData.x,
+        y: currentWordData.y,
+        w: currentWordData.w,
+        h: currentWordData.h,
+        new_text: newText,
+        font_size: size,
+        color: color
+    };
+
+    // Remove previous edit for this word if exists, then push new
+    edits = edits.filter(e => !(e.x === editObj.x && e.y === editObj.y));
+    edits.push(editObj);
+
+    layer.batchDraw();
+    M.Modal.getInstance(modalElement).close();
+    M.toast({html: 'Edit Applied (Preview)', classes: 'green rounded'});
+});
+
+// 5. Download / Finalize
+downloadBtn.addEventListener('click', async () => {
+    if (edits.length === 0) {
+        M.toast({html: 'No edits made!', classes: 'orange'});
+        return;
+    }
+
+    loader.style.display = 'flex';
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('edits', JSON.stringify(edits));
+
+    try {
+        const res = await fetch('/edit', { method: 'POST', body: formData });
+        const data = await res.json();
+        
+        if (data.error) throw new Error(data.error);
+        
+        // Trigger Download
+        const link = document.createElement('a');
+        link.href = data.download_url;
+        link.download = 'edited_document.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        M.toast({html: 'Download Started!', classes: 'blue rounded'});
+        
+    } catch (err) {
+        console.error(err);
+        M.toast({html: 'Error generating PDF', classes: 'red'});
+    } finally {
+        loader.style.display = 'none';
+    }
+});
