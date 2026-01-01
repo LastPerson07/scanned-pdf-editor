@@ -1,12 +1,11 @@
 import os, uuid, json, shutil
 import cv2
 import numpy as np
-import fitz  # PyMuPDF - now installed via pymupdf
+import fitz  # PyMuPDF
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, ImageDraw, ImageFont
-import pytesseract  # Imported here for safety
 
 app = FastAPI()
 
@@ -24,23 +23,39 @@ async def home():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 def get_ocr_words(img_path):
-    try:
-        img = Image.open(img_path)
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-        words = []
-        for i in range(len(data["text"])):
-            if int(data["conf"][i]) > 30 and data["text"][i].strip():
-                words.append({
-                    "text": data["text"][i].strip(),
-                    "x": data["left"][i],
-                    "y": data["top"][i],
-                    "w": data["width"][i],
-                    "h": data["height"][i]
-                })
-        return words
-    except Exception as e:
-        print("OCR Error:", str(e))
-        return []
+    import pytesseract
+    from PIL import Image
+    
+    # Preprocess image for better OCR: grayscale + adaptive threshold
+    cv_img = cv2.imread(img_path)
+    if cv_img is None:
+        raise ValueError("Failed to load image for OCR")
+    
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    
+    pil_img = Image.fromarray(thresh)
+    
+    # Optimized config: PSM 6 (block) for faster processing, OEM 3 (default engine)
+    data = pytesseract.image_to_data(
+        pil_img,
+        config='--oem 3 --psm 6',
+        output_type=pytesseract.Output.DICT
+    )
+    
+    words = []
+    for i in range(len(data["text"])):
+        conf = int(data["conf"][i])
+        text = data["text"][i].strip()
+        if conf > 35 and text:  # Slightly higher threshold for accuracy
+            words.append({
+                "text": text,
+                "x": data["left"][i],
+                "y": data["top"][i],
+                "w": data["width"][i],
+                "h": data["height"][i]
+            })
+    return words
 
 @app.post("/upload")
 async def upload(file: UploadFile = File(...)):
@@ -58,7 +73,7 @@ async def upload(file: UploadFile = File(...)):
         if file.filename.lower().endswith(".pdf"):
             doc = fitz.open(orig_path)
             page = doc[0]
-            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))  # 300 DPI
+            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))  # High quality
             pix.save(work_img_path)
         else:
             img = Image.open(orig_path).convert("RGB")
@@ -98,17 +113,13 @@ async def edit(session_id: str = Form(...), edits: str = Form(...)):
 
         for e in edit_list:
             font_size = e.get('font_size', int(e['h'] * 0.8))
-            color_hex = e.get('color', '#000000')
-            color = tuple(int(color_hex.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-
+            color = tuple(int(e['color'].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
             try:
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
             except:
                 font = ImageFont.load_default()
 
             text = e['new_text']
-
-            # Center text in box
             bbox = draw.textbbox((0, 0), text, font=font)
             text_w = bbox[2] - bbox[0]
             text_h = bbox[3] - bbox[1]
@@ -118,7 +129,7 @@ async def edit(session_id: str = Form(...), edits: str = Form(...)):
             draw.text((pos_x, pos_y), text, fill=color, font=font)
 
         output_pdf = os.path.join(session_path, "edited.pdf")
-        pil_img.save(output_pdf, "PDF", resolution=300.0)
+        pil_img.save(output_pdf, "PDF", resolution=100.0)
 
         return {"download_url": f"/data/{session_id}/edited.pdf"}
     except Exception as e:
