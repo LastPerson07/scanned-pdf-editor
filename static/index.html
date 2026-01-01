@@ -3,76 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScanEdit Pro | AI PDF Editor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>ScanEdit Pro | AI Document Editor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
     <link rel="stylesheet" href="/static/style.css">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
     <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
-    <style>
-        :root { --primary: #6366f1; --accent: #f43f5e; --bg: #0f172a; }
-        body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: white; overflow: hidden; height: 100vh; }
-        .liquid-blob { position: fixed; width: 500px; height: 500px; background: var(--primary); filter: blur(120px); opacity: 0.18; z-index: -1; border-radius: 50%; }
-        #blob1 { top: 10%; left: 20%; }
-        #blob2 { bottom: 10%; right: 20%; background: var(--accent); opacity: 0.15; }
-        .glass-container { display: flex; height: 100vh; padding: 30px; box-sizing: border-box; }
-        .sidebar { width: 90px; background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border-radius: 28px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; padding: 40px 0; gap: 30px; }
-        .main-content { flex: 1; margin-left: 30px; display: flex; align-items: center; justify-content: center; }
-        .drop-zone { width: 80%; max-width: 650px; padding: 60px 40px; background: rgba(255,255,255,0.04); border: 2px dashed rgba(255,255,255,0.25); border-radius: 40px; text-align: center; cursor: pointer; transition: all 0.4s; }
-        .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: rgba(99,102,241,0.1); box-shadow: 0 0 20px rgba(99,102,241,0.2); }
-        .btn-export { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); box-shadow: 0 10px 30px rgba(244,63,94,0.4); opacity: 0.4; pointer-events: none; }
-        .btn-export.active { opacity: 1; pointer-events: all; }
-        #konva-holder { background: white; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); max-width: 80vw; max-height: 80vh; overflow: hidden; }  /* Fit to screen */
-        .upload-icon { font-size: 48px; opacity: 0.6; margin-bottom: 10px; }
-    </style>
 </head>
 <body>
+
     <div class="liquid-blob" id="blob1"></div>
     <div class="liquid-blob" id="blob2"></div>
 
-    <div class="glass-container">
-        <aside class="sidebar">
-            <h4 style="font-weight:700; letter-spacing:1px;">S<span style="color:var(--primary)">E</span></h4>
-            <button id="downloadBtn" class="btn btn-export waves-effect waves-light z-depth-3">↓</button>
+    <div id="loader-overlay" class="loader-overlay" style="display:none;">
+        <div class="preloader-wrapper big active">
+            <div class="spinner-layer spinner-blue-only">
+                <div class="circle-clipper left"><div class="circle"></div></div>
+                <div class="gap-patch"><div class="circle"></div></div>
+                <div class="circle-clipper right"><div class="circle"></div></div>
+            </div>
+        </div>
+        <h5 class="white-text" style="margin-top: 20px;">Processing Document...</h5>
+    </div>
+
+    <div class="app-container">
+        
+        <aside class="sidebar z-depth-3">
+            <div class="logo">S<span>E</span></div>
+            
+            <div class="nav-actions">
+                <button id="resetBtn" class="tool-btn" title="Start Over">
+                    <i class="material-icons">refresh</i>
+                </button>
+                <div class="divider"></div>
+                <button id="zoomInBtn" class="tool-btn" title="Zoom In">
+                    <i class="material-icons">add</i>
+                </button>
+                <button id="zoomOutBtn" class="tool-btn" title="Zoom Out">
+                    <i class="material-icons">remove</i>
+                </button>
+            </div>
+
+            <button id="downloadBtn" class="btn-floating btn-large waves-effect waves-light accent-btn pulse disabled">
+                <i class="material-icons">download</i>
+            </button>
         </aside>
 
         <main class="main-content">
-            <div id="upload-view">
-                <div id="drop-zone" class="drop-zone z-depth-2">
-                    <div class="upload-icon">📄</div>
-                    <h3>ScanEdit Pro</h3>
-                    <p class="grey-text text-lighten-1">Drag & drop your scanned PDF or image here<br>or use the button below to browse</p>
-                    <button id="browseBtn" class="waves-effect waves-light btn-large" style="background:var(--primary); margin-top:20px;">Browse File</button>
+            
+            <div id="upload-view" class="view-section active">
+                <div class="glass-card upload-card" id="drop-zone">
+                    <div class="icon-wrapper">
+                        <i class="material-icons large-icon">cloud_upload</i>
+                    </div>
+                    <h2>Upload Scan</h2>
+                    <p>Drag & drop your PDF or Image here</p>
+                    
+                    <button id="browseBtn" class="btn-large waves-effect waves-light primary-btn">
+                        Browse Files
+                    </button>
                     <input type="file" id="fileInput" hidden accept=".pdf,.png,.jpg,.jpeg">
                 </div>
             </div>
 
-            <div id="editor-view" style="display:none; width:100%; height:90vh; overflow: hidden;">  <!-- Hidden overflow -->
-                <div id="konva-holder"></div>
+            <div id="editor-view" class="view-section" style="display:none;">
+                <div class="editor-header">
+                    <h4>Editor Mode</h4>
+                    <p class="grey-text text-lighten-2">Click any highlighted text to edit it.</p>
+                </div>
+                <div id="canvas-wrapper" class="z-depth-4">
+                    <div id="konva-holder"></div>
+                </div>
             </div>
+
         </main>
     </div>
 
-    <!-- Edit Modal -->
-    <div id="editModal" class="modal">
+    <div id="editModal" class="modal glass-modal">
         <div class="modal-content">
-            <h5>Edit Text</h5>
-            <div class="input-field">
-                <input id="newText" type="text" class="white-text">
-                <label for="newText">New Text</label>
-            </div>
-            <div class="input-field">
-                <input type="range" id="fontSizeSlider" min="8" max="80" value="24">
-                <label>Font Size: <span id="fontSizeValue">24</span>px</label>
-            </div>
-            <div class="input-field">
-                <label>Text Color</label><br><br>
-                <input type="color" id="textColor" value="#000000">
+            <h4>Edit Text</h4>
+            <div class="row">
+                <div class="input-field col s12">
+                    <input id="newText" type="text" class="white-text" autocomplete="off">
+                    <label for="newText">Content</label>
+                </div>
+                <div class="col s12 range-field-wrapper">
+                    <label>Font Size: <span id="fontSizeValue">24</span>px</label>
+                    <input type="range" id="fontSizeSlider" min="8" max="80" value="24">
+                </div>
+                <div class="input-field col s12 color-picker-wrapper">
+                    <label>Text Color</label>
+                    <input type="color" id="textColor" value="#000000">
+                </div>
             </div>
         </div>
-        <div class="modal-footer">
-            <a href="#!" class="modal-close waves-effect btn-flat grey-text">Cancel</a>
-            <button id="saveEditBtn" class="btn waves-effect waves-light" style="background:var(--primary);">Save</button>
+        <div class="modal-footer glass-footer">
+            <a href="#!" class="modal-close btn-flat white-text">Cancel</a>
+            <button id="saveEditBtn" class="btn waves-effect waves-light primary-btn">Apply Change</button>
         </div>
     </div>
 
