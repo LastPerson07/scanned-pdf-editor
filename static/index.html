@@ -22,7 +22,7 @@
         .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: rgba(99,102,241,0.1); box-shadow: 0 0 20px rgba(99,102,241,0.2); }
         .btn-export { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); box-shadow: 0 10px 30px rgba(244,63,94,0.4); opacity: 0.4; pointer-events: none; }
         .btn-export.active { opacity: 1; pointer-events: all; }
-        #konva-holder { background: white; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); max-height: 90vh; overflow: auto; }
+        #konva-holder { background: white; border-radius: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); max-width: 80vw; max-height: 80vh; overflow: hidden; }  /* Fit to screen */
         .upload-icon { font-size: 48px; opacity: 0.6; margin-bottom: 10px; }
     </style>
 </head>
@@ -47,7 +47,7 @@
                 </div>
             </div>
 
-            <div id="editor-view" style="display:none; width:100%; height:90vh;">
+            <div id="editor-view" style="display:none; width:100%; height:90vh; overflow: hidden;">  <!-- Hidden overflow -->
                 <div id="konva-holder"></div>
             </div>
         </main>
